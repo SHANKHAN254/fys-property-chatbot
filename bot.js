@@ -9,9 +9,12 @@ const path = require('path');
 // Configuration variables
 // ----------------------------------------
 let botName = "FY'S PROPERTY";
-let openaiApiKey = "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"; // Preconfigured API key
-const ADMIN_NUMBER = '254701339573@c.us'; // Correct admin WhatsApp number
-const LOCAL_IMG_PATH = './IMG-20250401-WA0011.jpg'; // Local image file path
+let openaiApiKey = "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";
+const ADMIN_NUMBER = '254701339573@c.us'; // Correct admin format
+const LOCAL_IMG_PATH = './IMG-20250401-WA0011.jpg'; // Local image file
+
+// Chatbot mode toggle (false by default)
+let chatbotEnabled = false;
 
 // In-memory storage for saved users and scheduled messages
 let savedUsers = [];
@@ -61,10 +64,10 @@ app.listen(PORT, () => {
 });
 
 // ----------------------------------------
-// Helper: Build the caption text
+// Helper: Build a styled caption with plenty of emojis
 // ----------------------------------------
 function buildCaption(text) {
-    return `${text}\n\n🔥 **${botName}** – Your ultimate development partner! 🚀\n✨ Let's build amazing apps together!`;
+    return `${text}\n\n🔥 **${botName}** – Your ultimate development partner! 🚀\n✨ Let's build amazing apps together! 😊`;
 }
 
 // ----------------------------------------
@@ -72,12 +75,12 @@ function buildCaption(text) {
 // ----------------------------------------
 async function sendImageWithCaption(chatId, text) {
     try {
-        // Fetch the image from a local file path
+        // Fetch the image from the local file path
         const media = MessageMedia.fromFilePath(LOCAL_IMG_PATH);
         await client.sendMessage(chatId, media, { caption: buildCaption(text) });
     } catch (error) {
         console.error("Error sending image:", error);
-        // Fallback: send just the text reply
+        // Fallback: send just text if image fails
         await client.sendMessage(chatId, buildCaption(text));
     }
 }
@@ -86,7 +89,7 @@ async function sendImageWithCaption(chatId, text) {
 // Helper: Check if the message is from a private chat
 // ----------------------------------------
 function isPrivateChat(message) {
-    return !message.from.includes('-'); // Groups have a dash in the "from" field
+    return !message.from.includes('-'); // Groups include '-' in the "from" field
 }
 
 // ----------------------------------------
@@ -104,7 +107,26 @@ function adminHelpText() {
 6) **schedule <2547xxxxxx> <YYYY-MM-DDTHH:mm:ss> <Your message>** – Schedule a message.
 7) **listusers** – View all saved users.
 8) **removeuser <index>** – Remove a saved user by its list number.
+9) **chatbot on** – Turn on chatbot (conversational) mode.
+10) **chatbot off** – Turn off chatbot mode.
 `;
+}
+
+// ----------------------------------------
+// Helper: Generate a conversational reply
+// ----------------------------------------
+function generateChatReply(userMessage) {
+    // For demonstration, this simple logic echoes back a friendly reply.
+    // In practice, you could integrate with an AI engine.
+    const responses = [
+        "Hi there! 😊 How can I help you today?",
+        "Hello! 👋 I'm here to chat and help you with your development journey!",
+        "Hey! 😃 What exciting project are you working on today?",
+        "Greetings! 🤗 Feel free to share your ideas, and I'll do my best to assist you!",
+        "Hi! 🌟 Let's chat about your project. How can I support you today?"
+    ];
+    // Pick a random reply
+    return responses[Math.floor(Math.random() * responses.length)];
 }
 
 // ----------------------------------------
@@ -139,94 +161,115 @@ client.on('message', async msg => {
     // Admin Commands (no prefix needed)
     // ----------------------------
     if (sender === ADMIN_NUMBER) {
-        // Show admin help if admin types "admin"
+        // If admin types "admin", show admin help
         if (lowerBody === 'admin') {
             await sendImageWithCaption(sender, adminHelpText());
             return;
         }
-        // Set API key: setapikey <NEW_API_KEY>
-        if (lowerBody.startsWith('setapikey ')) {
-            openaiApiKey = body.substring(10).trim();
-            await sendImageWithCaption(sender, "✅ OpenAI API Key updated successfully!");
+        // Toggle chatbot mode
+        if (lowerBody === 'chatbot on') {
+            chatbotEnabled = true;
+            await sendImageWithCaption(sender, "✅ Chatbot mode is now ON. All client messages will be handled in chat mode! 😊");
             return;
         }
-        // Set bot name: setname <New Bot Name>
-        if (lowerBody.startsWith('setname ')) {
-            botName = body.substring(8).trim();
-            await sendImageWithCaption(sender, `✅ Bot name updated successfully! Now it's "${botName}"`);
+        if (lowerBody === 'chatbot off') {
+            chatbotEnabled = false;
+            await sendImageWithCaption(sender, "✅ Chatbot mode is now OFF. Admin commands are active again.");
             return;
         }
-        // Save a user: saveuser <2547xxxxxx>
-        if (lowerBody.startsWith('saveuser ')) {
-            const newUser = body.substring(9).trim();
-            if (!savedUsers.includes(newUser)) {
-                savedUsers.push(newUser);
-                await sendImageWithCaption(sender, `✅ User ${newUser} saved successfully!`);
-            } else {
-                await sendImageWithCaption(sender, `ℹ️ User ${newUser} is already saved.`);
-            }
-            return;
-        }
-        // Bulk messaging: bulk <Your message>
-        if (lowerBody.startsWith('bulk ')) {
-            const bulkMessage = body.substring(5).trim();
-            if (savedUsers.length === 0) {
-                await sendImageWithCaption(sender, "ℹ️ No saved users to send bulk messages.");
+        // The following admin commands are only processed when chatbot mode is off
+        if (!chatbotEnabled) {
+            // Set API key: setapikey <NEW_API_KEY>
+            if (lowerBody.startsWith('setapikey ')) {
+                openaiApiKey = body.substring(10).trim();
+                await sendImageWithCaption(sender, "✅ OpenAI API Key updated successfully!");
                 return;
             }
-            for (const user of savedUsers) {
-                // Ensure the user number is in the proper format (append "@c.us" if needed)
-                const formattedUser = user.includes('@c.us') ? user : `${user}@c.us`;
-                await sendImageWithCaption(formattedUser, bulkMessage);
-            }
-            await sendImageWithCaption(sender, `✅ Bulk message sent to ${savedUsers.length} users.`);
-            return;
-        }
-        // Schedule a message: schedule <2547xxxxxx> <YYYY-MM-DDTHH:mm:ss> <Your message>
-        if (lowerBody.startsWith('schedule ')) {
-            const parts = body.split(' ');
-            if (parts.length < 4) {
-                await sendImageWithCaption(sender, "❌ Invalid schedule format. Use: schedule <user> <ISO dateTime> <message>");
+            // Set bot name: setname <New Bot Name>
+            if (lowerBody.startsWith('setname ')) {
+                botName = body.substring(8).trim();
+                await sendImageWithCaption(sender, `✅ Bot name updated successfully! Now it's "${botName}"`);
                 return;
             }
-            const scheduledUser = parts[1];
-            const scheduledTime = new Date(parts[2]);
-            if (isNaN(scheduledTime.getTime())) {
-                await sendImageWithCaption(sender, "❌ Invalid date/time format. Please use ISO format (YYYY-MM-DDTHH:mm:ss)");
+            // Save a user: saveuser <2547xxxxxx>
+            if (lowerBody.startsWith('saveuser ')) {
+                const newUser = body.substring(9).trim();
+                if (!savedUsers.includes(newUser)) {
+                    savedUsers.push(newUser);
+                    await sendImageWithCaption(sender, `✅ User ${newUser} saved successfully!`);
+                } else {
+                    await sendImageWithCaption(sender, `ℹ️ User ${newUser} is already saved.`);
+                }
                 return;
             }
-            const scheduledMsg = parts.slice(3).join(' ');
-            scheduledMessages.push({ to: scheduledUser, message: scheduledMsg, time: scheduledTime });
-            await sendImageWithCaption(sender, `✅ Message scheduled for ${scheduledUser} at ${scheduledTime.toString()}`);
-            return;
-        }
-        // List saved users: listusers
-        if (lowerBody === 'listusers') {
-            if (savedUsers.length === 0) {
-                await sendImageWithCaption(sender, "ℹ️ No saved users.");
-            } else {
-                const list = savedUsers.map((u, i) => `${i + 1}. ${u}`).join('\n');
-                await sendImageWithCaption(sender, `📋 Saved Users:\n${list}\n\nTo remove a user, type: removeuser <index>`);
+            // Bulk messaging: bulk <Your message>
+            if (lowerBody.startsWith('bulk ')) {
+                const bulkMessage = body.substring(5).trim();
+                if (savedUsers.length === 0) {
+                    await sendImageWithCaption(sender, "ℹ️ No saved users to send bulk messages.");
+                    return;
+                }
+                for (const user of savedUsers) {
+                    const formattedUser = user.includes('@c.us') ? user : `${user}@c.us`;
+                    await sendImageWithCaption(formattedUser, bulkMessage);
+                }
+                await sendImageWithCaption(sender, `✅ Bulk message sent to ${savedUsers.length} users.`);
+                return;
             }
-            return;
-        }
-        // Remove a user: removeuser <index>
-        if (lowerBody.startsWith('removeuser ')) {
-            const index = parseInt(body.substring(11).trim());
-            if (isNaN(index) || index < 1 || index > savedUsers.length) {
-                await sendImageWithCaption(sender, "❌ Invalid index provided.");
-            } else {
-                const removed = savedUsers.splice(index - 1, 1);
-                await sendImageWithCaption(sender, `✅ Removed user: ${removed}`);
+            // Schedule a message: schedule <2547xxxxxx> <YYYY-MM-DDTHH:mm:ss> <Your message>
+            if (lowerBody.startsWith('schedule ')) {
+                const parts = body.split(' ');
+                if (parts.length < 4) {
+                    await sendImageWithCaption(sender, "❌ Invalid schedule format. Use: schedule <user> <ISO dateTime> <message>");
+                    return;
+                }
+                const scheduledUser = parts[1];
+                const scheduledTime = new Date(parts[2]);
+                if (isNaN(scheduledTime.getTime())) {
+                    await sendImageWithCaption(sender, "❌ Invalid date/time format. Please use ISO format (YYYY-MM-DDTHH:mm:ss)");
+                    return;
+                }
+                const scheduledMsg = parts.slice(3).join(' ');
+                scheduledMessages.push({ to: scheduledUser, message: scheduledMsg, time: scheduledTime });
+                await sendImageWithCaption(sender, `✅ Message scheduled for ${scheduledUser} at ${scheduledTime.toString()}`);
+                return;
             }
-            return;
+            // List saved users: listusers
+            if (lowerBody === 'listusers') {
+                if (savedUsers.length === 0) {
+                    await sendImageWithCaption(sender, "ℹ️ No saved users.");
+                } else {
+                    const list = savedUsers.map((u, i) => `${i + 1}. ${u}`).join('\n');
+                    await sendImageWithCaption(sender, `📋 Saved Users:\n${list}\n\nTo remove a user, type: removeuser <index>`);
+                }
+                return;
+            }
+            // Remove a user: removeuser <index>
+            if (lowerBody.startsWith('removeuser ')) {
+                const index = parseInt(body.substring(11).trim());
+                if (isNaN(index) || index < 1 || index > savedUsers.length) {
+                    await sendImageWithCaption(sender, "❌ Invalid index provided.");
+                } else {
+                    const removed = savedUsers.splice(index - 1, 1);
+                    await sendImageWithCaption(sender, `✅ Removed user: ${removed}`);
+                }
+                return;
+            }
         }
-    }
+    } // End admin commands
 
     // ----------------------------
-    // User Commands (no prefix needed)
+    // User Commands and Conversational Chat
     // ----------------------------
-    // If the user types "devhelp"
+    // If chatbot mode is enabled, reply in a conversational manner
+    if (chatbotEnabled) {
+        // Generate a friendly, engaging chat reply with emojis
+        const chatReply = generateChatReply(body);
+        await sendImageWithCaption(sender, chatReply);
+        return;
+    }
+
+    // Otherwise, process user commands (if any)
     if (lowerBody === 'devhelp') {
         await sendImageWithCaption(
             sender,
@@ -235,14 +278,13 @@ client.on('message', async msg => {
         return;
     }
 
-    // When the user requests support
     if (lowerBody.includes('support') || lowerBody.includes('help me') || lowerBody.includes('contact support')) {
-        // Alert the admin (ensuring the admin ID is in the correct format)
+        // Alert admin
         await sendImageWithCaption(
             ADMIN_NUMBER,
             `⚠️ User ${sender} is requesting support. Please reach out to them soon!`
         );
-        // Notify the user with a friendly message
+        // Notify user
         await sendImageWithCaption(
             sender,
             "🙏 Thanks for reaching out! Our dedicated support team has been alerted and will contact you shortly."
@@ -250,7 +292,7 @@ client.on('message', async msg => {
         return;
     }
 
-    // Default reply for any other message
+    // Default reply for any other message when chatbot mode is off
     await sendImageWithCaption(
         sender,
         "🤖 Hi there! I'm here to help you build amazing apps. Type 'devhelp' for development tips or 'support' if you need human assistance."
@@ -264,7 +306,6 @@ setInterval(async () => {
     const now = new Date();
     const dueMessages = scheduledMessages.filter(sch => now >= sch.time);
     for (const sch of dueMessages) {
-        // Format user number to include "@c.us" if missing
         const formattedUser = sch.to.includes('@c.us') ? sch.to : `${sch.to}@c.us`;
         await sendImageWithCaption(formattedUser, sch.message);
         console.log(`Scheduled message sent to ${formattedUser}`);
