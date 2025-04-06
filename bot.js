@@ -4,7 +4,6 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 const express = require('express');
-const fs = require('fs');
 const path = require('path');
 
 // Configuration variables
@@ -34,19 +33,19 @@ app.get('/', async (req, res) => {
     if (!latestQR) {
         return res.send("<h1>QR Code is not generated yet. Please check your console.</h1>");
     }
-    // Generate an <img> tag with the QR code as a data URL
     res.send(`
         <html>
             <head>
                 <title>${botName} - Scan QR Code</title>
                 <style>
-                    body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
+                    body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; background: #f9f9f9; }
                     h1 { color: #333; }
-                    img { margin: 20px auto; }
+                    img { margin: 20px auto; border: 5px solid #ccc; border-radius: 10px; }
                 </style>
             </head>
             <body>
-                <h1>Scan the QR Code to Login to ${botName}</h1>
+                <h1>Welcome to ${botName}</h1>
+                <p>Scan the QR Code below using WhatsApp to get started.</p>
                 <img src="${latestQR}" alt="QR Code">
             </body>
         </html>
@@ -58,22 +57,37 @@ app.listen(PORT, () => {
     console.log(`Express server running on http://localhost:${PORT}`);
 });
 
-// Helper: Generate a beautiful advertising styled response (always appending the image link)
+// Helper: Generate a beautifully styled response message with advertising flair
 function createResponse(message) {
-    // Add emojis and the image link in an attractive format
-    return `${message}\n\n🔥 Check this out: ${botName} - https://iili.io/374CjBj.jpg 🚀✨`;
+    // Add emojis, colors, and the image link to create an engaging response
+    return `${message}\n\n🔥 **${botName}**: The ultimate development support tool!\n👉 Check out our features here: https://iili.io/374CjBj.jpg 🚀✨`;
 }
 
 // Helper: Check if chat is a private chat (non-group)
 function isPrivateChat(message) {
-    // For whatsapp-web.js, group chats have a property "from" containing a dash ('-')
+    // Group chats contain a dash in the "from" property
     return !message.from.includes('-');
+}
+
+// Function to send admin command help list
+function sendAdminHelp(msg) {
+    const helpMessage = `
+📣 *Admin Commands List* 📣
+• **admin** – Show this admin command list.
+• **setapikey NEW_API_KEY** – Update the OpenAI API key.
+• **setname New Bot Name** – Change the bot name.
+• **saveuser 2547xxxxxx** – Save a user number.
+• **bulk Your message** – Send a bulk message to all saved users.
+• **schedule 2547xxxxxx YYYY-MM-DDTHH:mm:ss Your message** – Schedule a message.
+• **listusers** – View all saved users.
+• **removeuser 1** – Remove a saved user by its list number.
+`;
+    msg.reply(createResponse(helpMessage));
 }
 
 // Client event: when QR code is received
 client.on('qr', (qr) => {
     console.log('QR RECEIVED, scan it from the webpage or console.');
-    // Convert the QR string to a data URL and update latestQR for webpage display
     qrcode.toDataURL(qr, (err, url) => {
         if (!err) {
             latestQR = url;
@@ -83,7 +97,7 @@ client.on('qr', (qr) => {
 
 // Client event: when the client is ready
 client.on('ready', () => {
-    console.log(`${botName} is ready!`);
+    console.log(`${botName} is ready and deployed!`);
 });
 
 // Client event: on receiving a message
@@ -91,19 +105,24 @@ client.on('message', async msg => {
     // Process only private chats
     if (!isPrivateChat(msg)) return;
 
-    const sender = msg.from; // sender's WhatsApp ID
+    const sender = msg.from;
     const body = msg.body.trim();
     console.log(`Message from ${sender}: ${body}`);
 
-    // Admin commands without prefix (only if sender matches ADMIN_NUMBER)
+    // Check if the sender is the admin
     if (sender.includes(ADMIN_NUMBER)) {
-        // Change OpenAI API Key: command: setapikey NEW_API_KEY
+        // Show admin commands if admin types "admin"
+        if (body.toLowerCase() === 'admin') {
+            sendAdminHelp(msg);
+            return;
+        }
+        // Update OpenAI API key: command: setapikey NEW_API_KEY
         if (body.startsWith('setapikey ')) {
             openaiApiKey = body.replace('setapikey ', '').trim();
             msg.reply(createResponse("✅ OpenAI API Key updated successfully!"));
             return;
         }
-        // Change bot name: command: setname New Bot Name
+        // Update bot name: command: setname New Bot Name
         if (body.startsWith('setname ')) {
             botName = body.replace('setname ', '').trim();
             msg.reply(createResponse(`✅ Bot name updated successfully! Now it's "${botName}"`));
@@ -129,9 +148,8 @@ client.on('message', async msg => {
             msg.reply(createResponse(`✅ Bulk message sent to ${savedUsers.length} users.`));
             return;
         }
-        // Schedule a message: command: schedule 2547xxxxxx YYYY-MM-DDTHH:mm:ss Message to schedule
+        // Schedule a message: command: schedule 2547xxxxxx YYYY-MM-DDTHH:mm:ss Your message
         if (body.startsWith('schedule ')) {
-            // Expect format: schedule <user> <ISO date time> <message>
             const parts = body.split(' ');
             if (parts.length < 4) {
                 msg.reply(createResponse("❌ Invalid schedule format. Use: schedule <user> <ISO dateTime> <message>"));
@@ -149,7 +167,7 @@ client.on('message', async msg => {
             return;
         }
         // List saved users: command: listusers
-        if (body === 'listusers') {
+        if (body.toLowerCase() === 'listusers') {
             if (savedUsers.length === 0) {
                 msg.reply(createResponse("ℹ️ No saved users."));
             } else {
@@ -158,7 +176,7 @@ client.on('message', async msg => {
             }
             return;
         }
-        // Remove a saved user by index: command: removeuser 1
+        // Remove a saved user: command: removeuser 1
         if (body.startsWith('removeuser ')) {
             const index = parseInt(body.replace('removeuser ', '').trim());
             if (isNaN(index) || index < 1 || index > savedUsers.length) {
@@ -171,37 +189,34 @@ client.on('message', async msg => {
         }
     } // end admin commands
 
-    // User commands
-    // If user asks to contact support (various phrasing)
-    if (body.toLowerCase().includes("contact support") || body.toLowerCase().includes("help me") || body.toLowerCase().includes("support")) {
-        // Alert the admin by sending a message to the admin number.
+    // User commands (no prefix required)
+    if (body.toLowerCase() === 'devhelp') {
+        msg.reply(createResponse("💡 Welcome to FY'S PROPERTY Development Support!\n\nSend your development queries or say 'support' if you need to chat with our team."));
+        return;
+    }
+    // Requesting support by users (various phrasings)
+    if (body.toLowerCase().includes("support") || body.toLowerCase().includes("help me") || body.toLowerCase().includes("contact support")) {
         client.sendMessage(ADMIN_NUMBER, createResponse(`⚠️ User ${sender} is requesting support. Please reach out to them soon!`));
-        msg.reply(createResponse("🙏 Thanks for reaching out! Our support team has been alerted and will contact you shortly."));
+        msg.reply(createResponse("🙏 Thanks for reaching out! Our dedicated support team has been alerted and will contact you shortly."));
         return;
     }
 
-    // Development help command
-    if (body === '!devhelp') {
-        msg.reply(createResponse("💡 Welcome to FY'S PROPERTY Development Support!\n\nSend your development queries, and I'll try to help you build amazing apps. For support, type 'contact support'."));
-        return;
-    }
-
-    // Default response for any other message
-    msg.reply(createResponse("🤖 Hi there! I'm here to help you develop amazing apps. Type '!devhelp' for assistance or 'contact support' if you need human help."));
+    // Default engaging reply for any other message
+    msg.reply(createResponse("🤖 Hi there! I'm here to help you build amazing apps. Type 'devhelp' for development support or simply say 'support' if you need human assistance."));
 });
 
-// Periodically check for scheduled messages (runs every minute)
+// Periodically check for scheduled messages (every minute)
 setInterval(() => {
     const now = new Date();
     scheduledMessages = scheduledMessages.filter(sch => {
         if (now >= sch.time) {
             client.sendMessage(sch.to, createResponse(sch.message));
             console.log(`Scheduled message sent to ${sch.to}`);
-            return false; // remove this scheduled message
+            return false; // remove scheduled message after sending
         }
-        return true; // keep if not yet time
+        return true;
     });
 }, 60 * 1000);
 
-// Initialize the client
+// Initialize the WhatsApp client
 client.initialize();
