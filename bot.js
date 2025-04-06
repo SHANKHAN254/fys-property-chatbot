@@ -4,12 +4,13 @@ const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 const express = require('express');
 const path = require('path');
+const axios = require('axios');
 
 // ----------------------------------------
 // Configuration variables
 // ----------------------------------------
 let botName = "FY'S PROPERTY";
-let openaiApiKey = "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";
+let openaiApiKey = "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"; // Preconfigured API key
 const ADMIN_NUMBER = '254701339573@c.us'; // Correct admin format
 const LOCAL_IMG_PATH = './IMG-20250401-WA0011.jpg'; // Local image file
 
@@ -93,6 +94,35 @@ function isPrivateChat(message) {
 }
 
 // ----------------------------------------
+// Function: Get ChatGPT reply using OpenAI API
+// ----------------------------------------
+async function getChatGPTReply(prompt) {
+    try {
+        const response = await axios.post(
+            'https://api.openai.com/v1/chat/completions',
+            {
+                model: 'gpt-3.5-turbo',
+                messages: [{ role: 'user', content: prompt }],
+                temperature: 0.7
+            },
+            {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${openaiApiKey}`
+                }
+            }
+        );
+        if (response.data && response.data.choices && response.data.choices.length > 0) {
+            return response.data.choices[0].message.content.trim();
+        }
+        return "I'm sorry, I didn't quite catch that.";
+    } catch (error) {
+        console.error("Error calling OpenAI API:", error.response ? error.response.data : error.message);
+        return "I'm sorry, something went wrong while processing your request.";
+    }
+}
+
+// ----------------------------------------
 // Admin Help Text
 // ----------------------------------------
 function adminHelpText() {
@@ -110,23 +140,6 @@ function adminHelpText() {
 9) **chatbot on** – Turn on chatbot (conversational) mode.
 10) **chatbot off** – Turn off chatbot mode.
 `;
-}
-
-// ----------------------------------------
-// Helper: Generate a conversational reply
-// ----------------------------------------
-function generateChatReply(userMessage) {
-    // For demonstration, this simple logic echoes back a friendly reply.
-    // In practice, you could integrate with an AI engine.
-    const responses = [
-        "Hi there! 😊 How can I help you today?",
-        "Hello! 👋 I'm here to chat and help you with your development journey!",
-        "Hey! 😃 What exciting project are you working on today?",
-        "Greetings! 🤗 Feel free to share your ideas, and I'll do my best to assist you!",
-        "Hi! 🌟 Let's chat about your project. How can I support you today?"
-    ];
-    // Pick a random reply
-    return responses[Math.floor(Math.random() * responses.length)];
 }
 
 // ----------------------------------------
@@ -261,15 +274,14 @@ client.on('message', async msg => {
     // ----------------------------
     // User Commands and Conversational Chat
     // ----------------------------
-    // If chatbot mode is enabled, reply in a conversational manner
+    // When chatbot mode is enabled, use the OpenAI API for generating a reply
     if (chatbotEnabled) {
-        // Generate a friendly, engaging chat reply with emojis
-        const chatReply = generateChatReply(body);
+        const chatReply = await getChatGPTReply(body);
         await sendImageWithCaption(sender, chatReply);
         return;
     }
 
-    // Otherwise, process user commands (if any)
+    // Otherwise, if user types "devhelp"
     if (lowerBody === 'devhelp') {
         await sendImageWithCaption(
             sender,
@@ -278,13 +290,14 @@ client.on('message', async msg => {
         return;
     }
 
+    // When the user requests support
     if (lowerBody.includes('support') || lowerBody.includes('help me') || lowerBody.includes('contact support')) {
-        // Alert admin
+        // Alert the admin
         await sendImageWithCaption(
             ADMIN_NUMBER,
             `⚠️ User ${sender} is requesting support. Please reach out to them soon!`
         );
-        // Notify user
+        // Notify the user
         await sendImageWithCaption(
             sender,
             "🙏 Thanks for reaching out! Our dedicated support team has been alerted and will contact you shortly."
@@ -292,7 +305,7 @@ client.on('message', async msg => {
         return;
     }
 
-    // Default reply for any other message when chatbot mode is off
+    // Default reply when chatbot mode is off
     await sendImageWithCaption(
         sender,
         "🤖 Hi there! I'm here to help you build amazing apps. Type 'devhelp' for development tips or 'support' if you need human assistance."
